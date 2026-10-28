@@ -67,7 +67,25 @@ function validateAnalyzeRequest(body) {
   const keyword = validateKeyword(body.keyword);
   const limit = body.limit === undefined ? 30 : body.limit;
   if (!Number.isInteger(limit) || limit < 1 || limit > 30) throw apiError(400, '입력_오류', 'limit는 1~30 사이의 정수여야 합니다.', false);
-  return { keyword, limit };
+  const articles = body.articles === undefined ? undefined : validateClientArticles(body.articles);
+  return { keyword, limit, articles };
+}
+
+function validateClientArticles(items) {
+  const invalid = () => apiError(400, '기사_입력_오류', '기사 목록은 1~30건이며 번호·제목·언론사·날짜·http/https 링크가 올바라야 합니다.', false);
+  if (!Array.isArray(items) || items.length < 1 || items.length > 30) throw invalid();
+  const ids = new Set();
+  return items.map(item => {
+    if (!item || typeof item !== 'object' || !Number.isSafeInteger(item.id) || item.id < 1 || ids.has(item.id) || typeof item.title !== 'string' || !item.title.trim() || item.title.trim().length > 300 || typeof item.publisher !== 'string' || !item.publisher.trim() || item.publisher.length > 200 || typeof item.publishedAt !== 'string' || !Number.isFinite(Date.parse(item.publishedAt)) || typeof item.url !== 'string' || item.url.length > 8192) throw invalid();
+    let url;
+    try { url = new URL(item.url); } catch { throw invalid(); }
+    if (!['http:', 'https:'].includes(url.protocol)) throw invalid();
+    ids.add(item.id);
+    // 허용 필드만 복사해 클라이언트가 보낸 분류 결과는 신뢰하지 않습니다.
+    return { id: item.id, title: item.title.trim(), publisher: item.publisher.trim(),
+      publishedAt: new Date(item.publishedAt).toISOString(), url: item.url,
+      originalTitle: typeof item.originalTitle === 'string' ? item.originalTitle.slice(0, 600) : item.title };
+  });
 }
 
 function buildAnalysisInput(keyword, articles) {
@@ -391,16 +409,20 @@ function limitAnalyzeRequests(req, res, next) {
   next();
 }
 
-app.post('/api/analyze', limitAnalyzeRequests, express.json({ limit: '16kb' }), async (req, res) => {
+app.post('/api/analyze', limitAnalyzeRequests, express.json({ limit: '128kb' }), async (req, res) => {
   const started = Date.now();
   const telemetry = { articleCount: 0, aiDurationMs: 0, usage: { inputTokens: null, outputTokens: null } };
   let logKeyword = '(입력 오류)';
   try {
     if (!req.is('application/json')) throw apiError(415, '입력_형식_오류', '요청을 application/json 형식으로 보내 주세요.', false);
-    const { keyword, limit } = validateAnalyzeRequest(req.body);
+    const { keyword, limit, articles: clientArticles } = validateAnalyzeRequest(req.body);
     logKeyword = keyword.replace(/[\u0000-\u001f\u007f]/g, ' ');
-    const news = await collectNews(keyword);
-    const selected = news.articles.slice(0, limit);
+    const news = clientArticles ? {
+      ok: true, keyword, articles: clientArticles, warnings: [],
+      meta: { articleCount: clientArticles.length, receivedCount: clientArticles.length, source: '클라이언트 수집 목록', periodDays: 7, maxArticles: 30 }, message: ''
+    } : await collectNews(keyword);
+    // 전달 목록은 limit로 자르지 않고 검증한 목록 전체를 그대로 분석합니다.
+    const selected = clientArticles || news.articles.slice(0, limit);
     telemetry.articleCount = selected.length;
     let analysis = { articles: [], summary: [], additionalPerspective: { text: '' } };
     if (selected.length) analysis = await analyzeHeadlines(keyword, selected, telemetry);

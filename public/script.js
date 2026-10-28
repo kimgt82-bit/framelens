@@ -44,6 +44,16 @@ const MOCK_RESPONSE = {
 const byId = id => document.getElementById(id);
 let currentResult = null;
 let isLoading = false;
+let collectedResult = null;
+let collectionValid = false;
+let showPublishers = false;
+function keywordChanged() {
+  if (collectedResult) {
+    collectionValid = false;
+    byId('status').textContent = '키워드가 바뀌었습니다. 다시 수집해 주세요.';
+  }
+  byId('reveal-button').disabled = true;
+}
 const RECENT_SEARCH_KEY = 'frameLens.recentSearches';
 let recentSearches = readRecentSearches();
 function readRecentSearches() {
@@ -61,7 +71,7 @@ function renderRecentSearches() {
     button.addEventListener('click', () => {
       if (isLoading) return;
       byId('keyword').value = keyword;
-      requestAnalysis();
+      keywordChanged(); byId('keyword').focus();
     });
     byId('recent-buttons').append(button);
   });
@@ -98,10 +108,11 @@ function resetCopyUi() {
   byId('copy-text').value = '';
 }
 async function copyResults(mode) {
-  if (isLoading || !currentResult?.articles.length) return;
+  const items = mode === 'manual' ? collectedResult?.articles : currentResult?.articles;
+  if (isLoading || !items?.length) return;
   const generation = copyGeneration;
-  const text = buildTsv(currentResult.articles, mode);
-  const count = currentResult.articles.length;
+  const text = buildTsv(items, mode);
+  const count = items.length;
   clearTimeout(copyTimer);
   try {
     await navigator.clipboard.writeText(text);
@@ -161,7 +172,8 @@ function renderTitles(data) {
   byId('title-rows').replaceChildren();
   data.articles.forEach(item => {
     const row = element('tr');
-    cell(row, item.id); cell(row, item.title, 'title-cell'); cell(row, item.publisher);
+    cell(row, item.id); cell(row, item.title, 'title-cell');
+    if (showPublishers) cell(row, item.publisher);
     byId('title-rows').append(row);
   });
 }
@@ -244,83 +256,94 @@ FRAMES.forEach((frame, index) => {
 });
 document.querySelectorAll('[data-keyword]').forEach(button => button.addEventListener('click', () => {
   if (isLoading) return;
-  byId('keyword').value = button.dataset.keyword; byId('keyword').focus();
-  requestAnalysis();
+  byId('keyword').value = button.dataset.keyword;
+  keywordChanged(); byId('keyword').focus();
 }));
-byId('search-form').addEventListener('submit', event => {
-  event.preventDefault();
-  requestAnalysis();
-});
-async function requestAnalysis() {
+byId('search-form').addEventListener('submit', event => { event.preventDefault(); collectHeadlines(); });
+function setBusy(busy) {
+  isLoading = busy;
+  byId('analyze-button').disabled = busy;
+  byId('keyword').disabled = busy;
+  byId('publisher-toggle').disabled = busy;
+  document.querySelectorAll('[data-keyword]').forEach(b => { b.disabled = busy; });
+  document.querySelectorAll('[data-copy]').forEach(b => { b.disabled = busy || !(b.dataset.copy === 'manual' ? collectedResult?.articles.length : currentResult?.articles.length); });
+  byId('reveal-button').disabled = busy || !collectionValid || !collectedResult?.articles.length;
+  byId('search-form').setAttribute('aria-busy', String(busy));
+  renderRecentSearches();
+}
+async function readResponse(response) {
+  let data;
+  try { data = await response.json(); } catch { throw new Error('서버 응답을 읽지 못했습니다. 잠시 후 다시 시도해 주세요.'); }
+  if (!response.ok || data.ok !== true) throw new Error(data.error?.message || '요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+  return data;
+}
+function showRequestError(error) {
+  byId('status').className = 'error';
+  byId('status').textContent = error instanceof TypeError ? '서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.' : error.message;
+}
+async function collectHeadlines() {
   if (isLoading) return;
-  resetCopyUi();
-  currentResult = null;
-  byId('results').hidden = true;
-  byId('status').className = '';
-  byId('status').textContent = '';
+  resetCopyUi(); currentResult = null; collectedResult = null; collectionValid = false;
+  byId('results').hidden = true; byId('ai-results').hidden = true;
+  byId('excluded-section').hidden = true; byId('analysis-notice').hidden = true;
+  byId('status').className = ''; byId('status').textContent = '';
   const keyword = byId('keyword').value.trim();
   if (!keyword || keyword.length > 100) {
     byId('status').textContent = keyword ? '키워드는 100자까지 입력할 수 있습니다.' : '키워드를 입력해 주세요.';
-    byId('status').className = 'error'; byId('keyword').setAttribute('aria-invalid', 'true'); byId('keyword').focus(); return;
+    byId('status').className = 'error'; byId('keyword').setAttribute('aria-invalid','true'); setBusy(false); return;
   }
-  byId('keyword').removeAttribute('aria-invalid'); byId('status').className = '';
-  byId('ai-results').hidden = true; byId('reveal-button').setAttribute('aria-expanded', 'false');
-  byId('reveal-button').textContent = 'AI 결과 보기';
-  currentResult = null;
-  byId('results').hidden = true;
-  byId('results-title').textContent = `‘${keyword}’ 분석 결과`;
-  isLoading = true;
-  renderRecentSearches();
-  const buttons = [byId('analyze-button'), ...document.querySelectorAll('[data-keyword]')];
-  buttons.forEach(button => { button.disabled = true; });
-  byId('keyword').disabled = true;
-  byId('search-form').setAttribute('aria-busy', 'true');
-  byId('status').textContent = '뉴스를 수집하고 제목을 분석하고 있습니다... (10~30초 정도 걸립니다)';
+  byId('keyword').removeAttribute('aria-invalid'); setBusy(true);
+  byId('status').textContent = '최근 뉴스 헤드라인을 수집하고 있습니다...';
   try {
-    const response = await fetch('/api/analyze', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keyword })
-    });
-    let data;
-    try { data = await response.json(); } catch { throw new Error('서버 응답을 읽지 못했습니다. 잠시 후 다시 시도해 주세요.'); }
-    if (!response.ok || data.ok !== true) throw new Error(data.error?.message || '분석하지 못했습니다. 잠시 후 다시 시도해 주세요.');
-    currentResult = data;
-    if (data.articles.length > 0) saveRecentSearch(keyword);
-    renderTitles(data); renderScopeNotice(data);
-    byId('results').hidden = false;
-    byId('reveal-button').hidden = data.articles.length === 0;
-    byId('empty-message').hidden = data.articles.length !== 0;
-    const emptyMessage = data.meta.totalAnalyzedCount > 0 ? '분석할 국내 기사가 없습니다. 다른 키워드로 시도해 주세요.' : '최근 7일간 관련 뉴스를 찾지 못했습니다. 다른 키워드로 시도해 주세요.';
-    byId('empty-message').textContent = emptyMessage;
-    byId('small-sample').hidden = data.articles.length === 0 || data.articles.length >= 10;
-    document.querySelectorAll('[data-copy]').forEach(button => { button.disabled = data.articles.length === 0; });
-    byId('status').textContent = data.message || (data.articles.length ? '분석을 완료했습니다.' : emptyMessage);
-  } catch (error) {
-    currentResult = null;
-    byId('results').hidden = true;
-    byId('status').className = 'error';
-    byId('status').textContent = error instanceof TypeError ? '서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.' : error.message;
-  } finally {
-    isLoading = false;
-    renderRecentSearches();
-    buttons.forEach(button => { button.disabled = false; });
-    byId('keyword').disabled = false;
-    byId('search-form').setAttribute('aria-busy', 'false');
-  }
+    const data = await readResponse(await fetch('/api/news?q=' + encodeURIComponent(keyword)));
+    collectedResult = data; collectionValid = true; showPublishers = false;
+    byId('publisher-heading').hidden = true;
+    byId('publisher-toggle').textContent = '언론사 보기';
+    byId('publisher-toggle').setAttribute('aria-pressed','false');
+    renderTitles(data); byId('results').hidden = false;
+    byId('results-title').textContent = '‘' + keyword + '’ 수집된 헤드라인';
+    const m = data.meta;
+    byId('collection-info').textContent = '받은 ' + m.receivedCount + '건 · 날짜 제외 ' + m.dateExcludedCount + '건 · 형식 제외 ' + (m.invalidExcludedCount || 0) + '건 · 중복 제외 ' + m.duplicateExcludedCount + '건 · 제한 제외 ' + (m.limitExcludedCount || 0) + '건 · 최종 ' + data.articles.length + '건';
+    byId('reveal-button').hidden = false;
+    byId('status').textContent = data.articles.length ? '수집을 완료했습니다. 먼저 직접 분류한 뒤 AI 분석을 실행하세요.' : '최근 7일간 관련 뉴스를 찾지 못했습니다. 다른 키워드로 시도해 주세요.';
+  } catch(error) { showRequestError(error); }
+  finally { setBusy(false); }
 }
-byId('reveal-button').addEventListener('click', () => {
-  if (!currentResult || !currentResult.articles.length || isLoading) return;
-  const reveal = byId('ai-results').hidden;
-  if (reveal) renderAnalysis(currentResult);
-  byId('ai-results').hidden = !reveal;
-  byId('reveal-button').setAttribute('aria-expanded', String(reveal));
-  byId('reveal-button').textContent = reveal ? 'AI 결과 접기' : 'AI 결과 보기';
+async function requestAnalysis() {
+  if (isLoading || !collectionValid || !collectedResult?.articles.length) return;
+  if (byId('keyword').value.trim() !== collectedResult.keyword) { keywordChanged(); return; }
+  resetCopyUi(); currentResult = null; byId('ai-results').hidden = true;
+  byId('excluded-section').hidden = true; byId('analysis-notice').hidden = true;
+  byId('status').className = ''; setBusy(true);
+  byId('status').textContent = '수집된 제목을 분석하고 있습니다... (10~30초 정도 걸립니다)';
+  try {
+    const data = await readResponse(await fetch('/api/analyze', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({keyword:collectedResult.keyword, articles:collectedResult.articles}) }));
+    currentResult = data;
+    if (data.articles.length) saveRecentSearch(collectedResult.keyword);
+    renderScopeNotice(data); byId('analysis-notice').hidden = false;
+    byId('empty-message').hidden = data.articles.length !== 0;
+    byId('empty-message').textContent = '분석할 국내 기사가 없습니다. 다른 키워드로 시도해 주세요.';
+    byId('small-sample').hidden = data.articles.length === 0 || data.articles.length >= 10;
+    if (data.articles.length) { renderAnalysis(data); byId('ai-results').hidden = false; }
+    byId('status').textContent = data.message;
+  } catch(error) { showRequestError(error); }
+  finally { setBusy(false); }
+}
+byId('reveal-button').addEventListener('click', requestAnalysis);
+byId('publisher-toggle').addEventListener('click', () => {
+  if (isLoading || !collectedResult) return;
+  showPublishers = !showPublishers;
+  byId('publisher-heading').hidden = !showPublishers;
+  byId('publisher-toggle').textContent = showPublishers ? '언론사 숨기기' : '언론사 보기';
+  byId('publisher-toggle').setAttribute('aria-pressed',String(showPublishers));
+  renderTitles(collectedResult);
 });
 byId('keyword').addEventListener('input', () => {
+  keywordChanged();
   if (byId('keyword').value.length >= 100) byId('status').textContent = '키워드는 100자까지 입력할 수 있습니다.';
 });
 byId('keyword').addEventListener('paste', event => {
   const input = byId('keyword');
   const pasted = event.clipboardData?.getData('text') || '';
-  const length = input.value.length - (input.selectionEnd - input.selectionStart) + pasted.length;
-  if (length > 100) byId('status').textContent = '키워드는 100자까지 입력할 수 있습니다. 넘는 부분은 입력되지 않습니다.';
+  if (input.value.length - (input.selectionEnd - input.selectionStart) + pasted.length > 100) byId('status').textContent = '키워드는 100자까지 입력할 수 있습니다. 넘는 부분은 입력되지 않습니다.';
 });

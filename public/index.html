@@ -22,27 +22,29 @@
       <h2 id="search-title">어떤 이슈를 살펴볼까요?</h2>
       <form id="search-form" novalidate>
         <label for="keyword">분석할 키워드</label>
-        <div class="search-row"><input id="keyword" name="keyword" maxlength="100" placeholder="예: 최저임금" autocomplete="off" aria-describedby="status"><button type="submit" class="primary" id="analyze-button">분석하기</button></div>
+        <div class="search-row"><input id="keyword" name="keyword" maxlength="100" placeholder="예: 최저임금" autocomplete="off" aria-describedby="status"><button type="submit" class="primary" id="analyze-button">뉴스 수집하기</button></div>
       </form>
       <div class="examples" aria-label="예시 키워드"><span>예시 키워드</span><button type="button" data-keyword="최저임금">최저임금</button><button type="button" data-keyword="저출생">저출생</button><button type="button" data-keyword="전기차">전기차</button></div>
       <div class="recent-searches" aria-label="최근 검색어"><div class="actions"><strong>최근 검색</strong><div id="recent-buttons" class="recent-buttons"></div><button id="clear-recent" type="button">기록 지우기</button></div><p id="recent-empty" class="muted">아직 성공한 검색 기록이 없습니다.</p><p id="recent-status" class="muted" role="status" aria-live="polite"></p></div>
-      <p id="status" role="status" aria-live="polite">키워드를 입력하면 최근 뉴스의 헤드라인 분석을 시작합니다.</p>
+      <p id="status" role="status" aria-live="polite">키워드를 입력하고 뉴스를 먼저 수집해 주세요.</p>
     </section>
 
     <section id="results" hidden aria-labelledby="results-title">
       <div class="section-heading"><div><span class="eyebrow">제목부터 천천히 살펴보기</span><h2 id="results-title">분석 결과</h2></div><span class="sample-label">최근 7일 · 최대 30건</span></div>
-      <aside class="notice" aria-live="polite"><p id="scope-notice"></p><p id="small-sample" hidden>기사 수가 적어 해석에 주의가 필요합니다.</p><p id="scope-detail" class="muted"></p><p id="empty-message" hidden>분석할 국내 기사가 없습니다. 다른 키워드로 시도해 주세요</p></aside>
+      <p id="collection-info" class="muted"></p>
       <div class="actions"><button type="button" data-copy="manual">수동 분류용 목록 복사</button></div>
       <p id="copy-status" role="status" aria-live="polite"></p><div id="copy-fallback" class="card" hidden><label for="copy-text">복사할 내용 (Ctrl+C로 복사)</label><textarea id="copy-text" rows="8" readonly></textarea></div>
       <section class="card">
-        <h3>먼저, 나의 시선으로 분류해 보세요</h3>
-        <p>AI 결과를 보기 전에 제목을 읽고 프레임을 정해 보세요. 수동 비교 시 같은 결과의 앞 20건을 사용하세요. 20건 미만이면 비교 건수를 따로 기록하세요.</p>
+        <h3>수집된 헤드라인</h3>
+        <p>블라인드 검증을 할 때는 이 단계에서 목록을 복사해 먼저 직접 분류한 뒤 AI 분석을 실행하세요. AI 분석 후 해외 기사가 제외될 수 있으므로 같은 번호끼리 비교하세요.</p>
         <div class="actions"><button type="button" data-copy="manual">수동 분류용 목록 복사</button></div>
-        <div class="table-scroll" role="region" aria-label="수동 분류용 제목 목록" tabindex="0"><table><thead><tr><th scope="col">번호</th><th scope="col">제목</th><th scope="col">언론사</th></tr></thead><tbody id="title-rows"></tbody></table></div>
-        <button id="reveal-button" class="primary" type="button" aria-expanded="false" aria-controls="ai-results">AI 결과 보기</button>
+        <button id="publisher-toggle" type="button" aria-pressed="false">언론사 보기</button><div class="table-scroll" role="region" aria-label="수동 분류용 제목 목록" tabindex="0"><table><thead><tr><th scope="col">번호</th><th scope="col">제목</th><th id="publisher-heading" scope="col" hidden>언론사</th></tr></thead><tbody id="title-rows"></tbody></table></div>
+        <button id="reveal-button" class="primary" type="button" disabled aria-controls="ai-results">AI 프레임 분석하기</button>
       </section>
 
+      <aside id="analysis-notice" hidden class="notice" aria-live="polite"><p id="scope-notice"></p><p id="small-sample" hidden>기사 수가 적어 해석에 주의가 필요합니다.</p><p id="scope-detail" class="muted"></p><p id="empty-message" hidden>분석할 국내 기사가 없습니다. 다른 키워드로 시도해 주세요</p></aside>
       <div id="ai-results" hidden>
+        <div class="actions"><button type="button" data-copy="ai">AI 결과 복사</button></div>
         <div id="summary-numbers" class="stats"></div>
         <div class="chart-grid">
           <section class="card"><h3>프레임 분포</h3><p class="muted">판단 보류를 포함한 전체 기사 기준</p><div id="frame-chart"></div></section>
