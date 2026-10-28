@@ -1,0 +1,13 @@
+# 비밀 정보 (절대 업로드 금지)
+.env
+.env.*
+
+# 설치된 패키지 (용량이 크고 다시 설치 가능)
+node_modules/
+
+# Vercel 설정 폴더
+.vercel/
+
+# 운영체제와 편집기 임시 파일
+.DS_Store
+Thumbs.db
