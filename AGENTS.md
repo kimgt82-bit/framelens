@@ -21,7 +21,7 @@
 - 로컬 실행 명령은 node server.js 이고, 주소는 http://localhost:3000 이다.
 
 ## 보안
-- OpenAI API 키는 .env 파일의 OPENAI_API_KEY 로만 읽는다 (dotenv 패키지 사용).
+- API 키는 서버에서 OPENAI_API_KEY 환경변수로만 사용한다. 로컬은 dotenv로 .env를 읽고, 배포 환경은 Vercel 환경변수를 사용한다.
 - .env 파일의 내용을 열람하거나, 출력하거나, 다른 파일에 복사하지 않는다.
 - API 키를 프론트엔드 코드에 넣지 않는다.
 - .env 와 node_modules 는 반드시 .gitignore 에 포함한다.

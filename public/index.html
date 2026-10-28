@@ -1,25 +1,8 @@
 <!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>프레임 렌즈 — 같은 뉴스, 다른 시선</title>
-  <link rel="stylesheet" href="/style.css">
-  <script src="/script.js" defer></script>
-</head>
+<html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>프레임 렌즈 — 같은 뉴스, 다른 시선</title><link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.min.css"><link rel="stylesheet" href="/style.css"><script src="/script.js" defer></script></head>
 <body>
-  <header class="hero">
-    <div class="container">
-      <span class="eyebrow">뉴스를 읽는 또 하나의 관점</span>
-      <h1>프레임 렌즈<span class="lens" aria-hidden="true">◎</span></h1>
-      <p class="subtitle">같은 뉴스, 다른 시선 - 헤드라인 프레임 분석기</p>
-      <p class="scope">최근 7일 Google 뉴스 헤드라인(최대 30건)을 AI가 분석합니다. 기사 본문은 분석하지 않습니다.</p>
-    </div>
-  </header>
-  <main class="container">
-    <aside class="notice"><strong>헤드라인 기반 학습용 분석</strong> · 실제 뉴스를 수집하고 AI가 제목을 분석합니다. 지역 판단과 프레임 분류에는 오류가 있을 수 있습니다.</aside>
-    <section class="card search-card" aria-labelledby="search-title">
-      <h2 id="search-title">어떤 이슈를 살펴볼까요?</h2>
+<header id="search-shell" class="search-shell"><div class="brand"><a href="#" id="home-link" aria-label="프레임 렌즈 첫 화면">프레임 렌즈<span aria-hidden="true">.</span></a><p>같은 뉴스, 다른 시선</p></div><section class="card search-card" aria-labelledby="search-title">
+      <h2 id="search-title">같은 뉴스, 다른 시선</h2>
       <form id="search-form" novalidate>
         <label for="keyword">분석할 키워드</label>
         <div class="search-row"><input id="keyword" name="keyword" maxlength="100" placeholder="예: 최저임금" autocomplete="off" aria-describedby="status"><button type="submit" class="primary" id="analyze-button">분석하기</button></div>
@@ -27,32 +10,15 @@
       <div class="examples" aria-label="예시 키워드"><span>예시 키워드</span><button type="button" data-keyword="최저임금">최저임금</button><button type="button" data-keyword="저출생">저출생</button><button type="button" data-keyword="전기차">전기차</button></div>
       <div class="recent-searches" aria-label="최근 검색어"><div class="actions"><strong>최근 검색</strong><div id="recent-buttons" class="recent-buttons"></div><button id="clear-recent" type="button">기록 지우기</button></div><p id="recent-empty" class="muted">아직 성공한 검색 기록이 없습니다.</p><p id="recent-status" class="muted" role="status" aria-live="polite"></p></div>
       <p id="status" role="status" aria-live="polite">키워드를 입력하고 분석하기를 눌러 주세요.</p>
-    </section>
-
-    <section id="results" hidden aria-labelledby="results-title">
-      <div class="section-heading"><div><span class="eyebrow">제목부터 천천히 살펴보기</span><h2 id="results-title">분석 결과</h2></div><span class="sample-label">최근 7일 · 최대 30건</span></div>
-      <aside id="analysis-notice" hidden class="notice" aria-live="polite"><p id="scope-notice"></p><p id="small-sample" hidden>기사 수가 적어 해석에 주의가 필요합니다.</p><p id="scope-detail" class="muted"></p><p id="empty-message" hidden>분석할 국내 기사가 없습니다. 다른 키워드로 시도해 주세요</p></aside>
-      <div id="ai-results" hidden>
-        <section class="card briefing"><div class="section-heading"><h3>오늘의 핵심 브리핑</h3><span id="analysis-date" class="sample-label"></span></div><ol id="briefing-list"></ol><p id="briefing-notice" class="muted"></p><p class="muted">헤드라인 기준 요약이며, 기사 본문의 사실 확인을 대신하지 않습니다.</p><div class="actions"><button id="share-button" type="button">결과 공유하기</button><a id="email-link" class="button-link" href="mailto:">메일로 보내기</a></div><p id="share-status" role="status" aria-live="polite"></p><div id="share-fallback" hidden><label for="share-text">공유할 내용 (선택 후 Ctrl+C)</label><textarea id="share-text" rows="7" readonly></textarea></div></section>
-        
-        <div id="summary-numbers" class="stats"></div>
-        <div class="chart-grid">
-          <section class="card"><h3>프레임 분포</h3><p class="muted">판단 보류를 포함한 전체 기사 기준</p><div id="frame-chart"></div></section>
-          <section class="card"><h3>감성 분포</h3><p class="muted">제목의 전반적인 표현과 어조 기준</p><div id="sentiment-chart"></div></section>
-        </div>
-        <section class="card"><h3>언론사별 프레임 비교</h3><p class="muted">각 칸은 건수와 해당 언론사 내부 비율입니다. 적은 표본으로 언론사 전체 성향을 판단할 수 없습니다.</p><div class="table-scroll" role="region" aria-label="언론사별 프레임 비교표" tabindex="0"><table id="publisher-table"></table></div></section>
-        <section class="card"><h3>프레임별 대표 헤드라인</h3><p class="muted">프레임별 최대 2건입니다. 기사 보기는 Google 뉴스 경유 링크일 수 있습니다.</p><div id="representatives" class="representative-grid"></div></section>
-        <div class="chart-grid">
-          <section class="card"><h3>AI 종합 해설 <span id="commentary-source" class="sample-label">AI 분석</span></h3><ol id="summary-text"></ol></section>
-          <section class="card perspective"><h3>추가로 살펴볼 관점 제안</h3><p id="perspective-text"></p><p id="perspective-note" class="muted"></p></section>
-        </div>
-        <section class="card"><div class="section-heading"><h3>전체 기사 목록</h3></div><p class="muted">확신도는 정답 확률이 아닌 분류 근거의 명확성에 관한 자체 판단입니다. 같은 분석 결과의 번호를 사용해 수동 분류와 비교할 수 있습니다.</p><div class="table-scroll" role="region" aria-label="전체 기사 분석표" tabindex="0"><table><thead><tr><th scope="col">번호</th><th scope="col">제목</th><th scope="col">언론사</th><th scope="col">프레임</th><th scope="col">감성</th><th scope="col">확신도</th><th scope="col">근거</th></tr></thead><tbody id="article-rows"></tbody></table></div></section>
-      </div>
-      <details id="excluded-section" class="card" hidden><summary>분석에서 제외된 기사</summary><p class="muted">지역 판단 근거를 표시합니다. 서버 보정이 적용된 경우 그 사실과 보정 근거가 표시됩니다.</p><div class="table-scroll" role="region" aria-label="분석에서 제외된 기사 목록" tabindex="0"><table><thead><tr><th scope="col">번호</th><th scope="col">제목</th><th scope="col">언론사</th><th scope="col">링크</th><th scope="col">지역 판단 근거 (AI 또는 서버 보정)</th></tr></thead><tbody id="excluded-rows"></tbody></table></div></details>
-    </section>
-
-    <section class="card methodology" aria-labelledby="method-title"><h2 id="method-title">어떻게 분석하나요?</h2><p>Semetko &amp; Valkenburg(2000)의 5대 프레임을 참고한 헤드라인 기반 AI 분류입니다. 해외로 판정된 기사는 집계에서 제외하고 지역 판단 불가는 포함합니다. 외국 단서가 없는 제목은 국내로 보는 운영 기준을 사용합니다.</p><p>데이터는 최근 7일 Google 뉴스 헤드라인 최대 30건이며 해외 이슈 기사는 제외합니다. 기사 본문은 분석하지 않습니다. 감성은 제목의 어조 기준이고, 확신도는 AI의 자체 판단이며 정답 확률이 아닙니다.</p><div id="method-list" class="method-grid"></div><p>제목에 드러난 표현 → 가장 강조된 대표 프레임 1개 → 근거가 부족하면 판단 보류 순서로 판단합니다. 감성과 확신도는 프레임과 따로 판단합니다.</p><p class="notice"><strong>AI 분석은 참고용이며 오분류 가능성이 있습니다.</strong> 본문 맥락과 언론사의 정치 성향, 개인의 평소 뉴스 노출량은 판단하지 않습니다.</p></section>
-<details id="research-tools" class="card research-tools"><summary>연구자 도구 (분류 검증용)</summary><p>일반 분석 결과를 먼저 본 표본은 블라인드 검증에 사용하지 마세요. 위 검색창의 키워드로 별도 수집합니다.</p><button id="collect-button" type="button" class="primary">헤드라인만 수집(블라인드)</button>
+    </section><p class="scope">최근 7일 Google 뉴스 헤드라인 · 최대 30건 · 기사 본문은 분석하지 않습니다.</p><a class="research-shortcut" href="#research-tools">연구자 도구</a></header>
+<main id="result-scroll" class="result-scroll" tabindex="-1" aria-label="분석 결과와 연구자 도구">
+<section id="results" hidden aria-labelledby="results-title"><div id="ai-results" hidden>
+<section id="section-briefing" class="result-section" tabindex="0" aria-label="핵심 브리핑"><div class="section-content"><header class="section-intro"><span class="eyebrow">01 / 핵심 브리핑</span><h2 id="headline-briefing" class="section-headcopy">흩어진 뉴스,<br>쟁점부터 한눈에.</h2><p id="insight-briefing" class="section-insight">제목에 담긴 강조점을 천천히 살펴보세요.</p></header><div class="section-body"><p id="results-title" class="result-context">분석 결과</p><section class="card briefing"><div class="section-heading"><h3>오늘의 핵심 브리핑</h3><span id="analysis-date" class="sample-label"></span></div><div id="frame-strip" class="frame-strip" aria-label="프레임 분포 요약"></div><div id="frame-legend" class="frame-legend"></div><ol id="briefing-list"></ol><p id="briefing-notice" class="muted"></p><p class="muted">헤드라인 기준 요약이며, 기사 본문의 사실 확인을 대신하지 않습니다.</p><div class="actions"><button id="share-button" type="button">결과 공유하기</button><a id="email-link" class="button-link" href="mailto:">메일로 보내기</a></div><p id="share-status" role="status" aria-live="polite"></p><div id="share-fallback" hidden><label for="share-text">공유할 내용 (선택 후 Ctrl+C)</label><textarea id="share-text" rows="7" readonly></textarea></div></section><aside id="analysis-notice" hidden class="notice" aria-live="polite"><p id="scope-notice"></p><p id="small-sample" hidden>기사 수가 적어 해석에 주의가 필요합니다.</p><p id="scope-detail" class="muted"></p><p id="empty-message" hidden>분석할 국내 기사가 없습니다. 다른 키워드로 시도해 주세요</p></aside><div id="summary-numbers" class="stats"></div></div><div class="section-turn"><span></span><span class="section-count">01 / 05</span><button type="button" data-go-section="section-distribution" class="turn-next">다음 · 보도의 분포 →</button></div></div></section>
+<section id="section-distribution" class="result-section" tabindex="0" aria-label="프레임과 감성 분포"><div class="section-content"><header class="section-intro"><span class="eyebrow">02 / 보도의 분포</span><h2 id="headline-distribution" class="section-headcopy">뉴스의 무게중심을<br>살펴보세요.</h2><p id="insight-distribution" class="section-insight">제목에 담긴 강조점을 천천히 살펴보세요.</p></header><div class="section-body"><div class="chart-grid"><section class="card"><h3>프레임 분포</h3><p class="muted">판단 보류를 포함한 전체 기사 기준</p><div id="frame-chart"></div></section><section class="card"><h3>감성 분포</h3><p class="muted">제목의 전반적인 표현과 어조 기준</p><div id="sentiment-chart"></div></section></div></div><div class="section-turn"><button type="button" data-go-section="section-briefing" class="turn-back">← 이전</button><span class="section-count">02 / 05</span><button type="button" data-go-section="section-headlines" class="turn-next">다음 · 관점 나란히 보기 →</button></div></div></section>
+<section id="section-headlines" class="result-section" tabindex="0" aria-label="프레임별 대표 헤드라인"><div class="section-content"><header class="section-intro"><span class="eyebrow">03 / 관점 나란히 보기</span><h2 id="headline-headlines" class="section-headcopy">같은 이슈에도,<br>서로 다른 시선.</h2><p id="insight-headlines" class="section-insight">제목에 담긴 강조점을 천천히 살펴보세요.</p></header><div class="section-body"><section class="card"><h3>프레임별 대표 헤드라인</h3><p class="muted">프레임별 최대 2건입니다. 기사 보기는 Google 뉴스 경유 링크일 수 있습니다.</p><div id="representatives" class="representative-grid"></div></section></div><div class="section-turn"><button type="button" data-go-section="section-distribution" class="turn-back">← 이전</button><span class="section-count">03 / 05</span><button type="button" data-go-section="section-comparison" class="turn-next">다음 · 비교와 해석 →</button></div></div></section>
+<section id="section-comparison" class="result-section" tabindex="0" aria-label="언론사 비교와 해설"><div class="section-content"><header class="section-intro"><span class="eyebrow">04 / 비교와 해석</span><h2 id="headline-comparison" class="section-headcopy">어디에 주목했는지,<br>나란히 비교하세요.</h2><p id="insight-comparison" class="section-insight">제목에 담긴 강조점을 천천히 살펴보세요.</p></header><div class="section-body"><section class="card"><h3>언론사별 프레임 비교</h3><p class="muted">각 칸은 건수와 해당 언론사 내부 비율입니다. 적은 표본으로 언론사 전체 성향을 판단할 수 없습니다.</p><div class="table-scroll" role="region" aria-label="언론사별 프레임 비교표" tabindex="0"><table id="publisher-table"></table></div></section><div class="chart-grid"><section class="card"><h3>AI 종합 해설 <span id="commentary-source" class="sample-label">AI 분석</span></h3><ol id="summary-text"></ol></section><section class="card perspective"><h3>추가로 살펴볼 관점 제안</h3><p id="perspective-text"></p><p id="perspective-note" class="muted"></p></section></div></div><div class="section-turn"><button type="button" data-go-section="section-headlines" class="turn-back">← 이전</button><span class="section-count">04 / 05</span><button type="button" data-go-section="section-method" class="turn-next">다음 · 근거와 방법 →</button></div></div></section>
+</div></section>
+<section id="section-method" class="result-section" tabindex="0" aria-label="전체 기사와 방법론"><div class="section-content"><header class="section-intro"><span class="eyebrow">05 / 근거와 방법</span><h2 id="headline-method" class="section-headcopy">해석의 출발점은,<br>언제나 제목입니다.</h2><p id="insight-method" class="section-insight">제목에 담긴 강조점을 천천히 살펴보세요.</p></header><div class="section-body"><div id="article-evidence" hidden><section class="card"><div class="section-heading"><h3>전체 기사 목록</h3></div><p class="muted">확신도는 정답 확률이 아닌 분류 근거의 명확성에 관한 자체 판단입니다. 같은 분석 결과의 번호를 사용해 수동 분류와 비교할 수 있습니다.</p><div class="table-scroll" role="region" aria-label="전체 기사 분석표" tabindex="0"><table><thead><tr><th scope="col">번호</th><th scope="col">제목</th><th scope="col">언론사</th><th scope="col">프레임</th><th scope="col">감성</th><th scope="col">확신도</th><th scope="col">근거</th></tr></thead><tbody id="article-rows"></tbody></table></div></section></div><details id="excluded-section" class="card" hidden><summary>분석에서 제외된 기사</summary><p class="muted">지역 판단 근거를 표시합니다. 서버 보정이 적용된 경우 그 사실과 보정 근거가 표시됩니다.</p><div class="table-scroll" role="region" aria-label="분석에서 제외된 기사 목록" tabindex="0"><table><thead><tr><th scope="col">번호</th><th scope="col">제목</th><th scope="col">언론사</th><th scope="col">링크</th><th scope="col">지역 판단 근거 (AI 또는 서버 보정)</th></tr></thead><tbody id="excluded-rows"></tbody></table></div></details><section class="card methodology" aria-labelledby="method-title"><h2 id="method-title">어떻게 분석하나요?</h2><p>Semetko &amp; Valkenburg(2000)의 5대 프레임을 참고한 헤드라인 기반 AI 분류입니다. 해외로 판정된 기사는 집계에서 제외하고 지역 판단 불가는 포함합니다. 외국 단서가 없는 제목은 국내로 보는 운영 기준을 사용합니다.</p><p>데이터는 최근 7일 Google 뉴스 헤드라인 최대 30건이며 해외 이슈 기사는 제외합니다. 기사 본문은 분석하지 않습니다. 감성은 제목의 어조 기준이고, 확신도는 AI의 자체 판단이며 정답 확률이 아닙니다.</p><div id="method-list" class="method-grid"></div><p>제목에 드러난 표현 → 가장 강조된 대표 프레임 1개 → 근거가 부족하면 판단 보류 순서로 판단합니다. 감성과 확신도는 프레임과 따로 판단합니다.</p><p class="notice"><strong>AI 분석은 참고용이며 오분류 가능성이 있습니다.</strong> 본문 맥락과 언론사의 정치 성향, 개인의 평소 뉴스 노출량은 판단하지 않습니다.</p></section><details id="research-tools" class="card research-tools"><summary>연구자 도구 (분류 검증용)</summary><p>일반 분석 결과를 먼저 본 표본은 블라인드 검증에 사용하지 마세요. 위 검색창의 키워드로 별도 수집합니다.</p><button id="collect-button" type="button" class="primary">헤드라인만 수집(블라인드)</button>
       <p id="collection-info" class="muted"></p>
       
       <p id="copy-status" role="status" aria-live="polite"></p><div id="copy-fallback" class="card" hidden><label for="copy-text">복사할 내용 (Ctrl+C로 복사)</label><textarea id="copy-text" rows="8" readonly></textarea></div>
@@ -64,8 +30,8 @@
         <button id="reveal-button" class="primary" type="button" disabled aria-controls="ai-results">이 목록으로 AI 분석</button>
       </section>
 
-<div class="actions"><button type="button" data-copy="ai" disabled>AI 결과 복사</button></div><p class="muted">AI 결과 복사는 이 도구에서 분석한 같은 표본만 사용합니다. 해외 제외 후에도 수집 번호는 유지됩니다.</p></details>
-  </main>
-  <footer class="container">프레임 렌즈 · 헤드라인 기반 학습용 도구 · 실제 뉴스 AI 분석</footer>
-</body>
-</html>
+<div class="actions"><button type="button" data-copy="ai" disabled>AI 결과 복사</button></div><p class="muted">AI 결과 복사는 이 도구에서 분석한 같은 표본만 사용합니다. 해외 제외 후에도 수집 번호는 유지됩니다.</p></details><footer>프레임 렌즈 · 헤드라인 기반 학습용 도구</footer></div><div class="section-turn"><button type="button" data-go-section="section-comparison" class="turn-back">← 이전</button><span class="section-count">05 / 05</span><button type="button" data-go-section="section-briefing" class="turn-next">브리핑으로 돌아가기 ↑</button></div></div></section>
+</main>
+<nav id="section-nav" class="section-nav" aria-label="결과 섹션 이동" hidden><a href="#section-briefing" aria-label="핵심 브리핑" data-section="section-briefing"><span></span></a><a href="#section-distribution" aria-label="프레임 분포" data-section="section-distribution"><span></span></a><a href="#section-headlines" aria-label="대표 헤드라인" data-section="section-headlines"><span></span></a><a href="#section-comparison" aria-label="언론사 비교와 해설" data-section="section-comparison"><span></span></a><a href="#section-method" aria-label="전체 기사와 방법론" data-section="section-method"><span></span></a></nav>
+<div id="loading-screen" class="loading-screen" hidden role="dialog" aria-modal="true" aria-labelledby="loading-title" tabindex="-1"><div id="headline-stream" class="headline-stream" aria-hidden="true"></div><div class="loading-center"><span class="loading-mark" aria-hidden="true"></span><h2 id="loading-title">뉴스의 관점을 살펴보고 있습니다</h2><ol id="loading-steps"><li data-step="1">① 뉴스 수집 중</li><li data-step="2">② 헤드라인 프레임 분석 중</li><li data-step="3">③ 결과 정리 중</li></ol><p id="loading-status" role="status" aria-live="polite"></p><p class="muted">보통 15~30초 정도 걸립니다</p></div></div>
+</body></html>

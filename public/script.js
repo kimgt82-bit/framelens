@@ -202,6 +202,7 @@ function renderAnalysis(data) {
   });
   renderChart('frame-chart', FRAMES, data.distribution.frames, total, 'frame');
   renderChart('sentiment-chart', SENTIMENTS, data.distribution.sentiments, total, 'sentiment');
+  renderFrameStrip(data);
   const table = byId('publisher-table'); table.replaceChildren();
   const head = element('thead'); const header = element('tr');
   ['언론사', '기사 수', ...FRAMES].forEach((label, index) => {
@@ -241,6 +242,119 @@ function renderAnalysis(data) {
   });
 }
 
+function renderFrameStrip(data) {
+  byId('frame-strip').replaceChildren(); byId('frame-legend').replaceChildren();
+  FRAMES.forEach((frame, index) => {
+    const count = data.distribution.frames[frame] || 0;
+    const ratio = data.articles.length ? count / data.articles.length * 100 : 0;
+    if (count) {
+      const segment = element('div', undefined, `frame-segment frame-${index}`);
+      segment.style.width = `${ratio}%`;
+      segment.title = `${frame} ${count}건 (${percent(count, data.articles.length)})`;
+      segment.setAttribute('aria-label', segment.title); byId('frame-strip').append(segment);
+    }
+    byId('frame-legend').append(element('span', `${frame} ${percent(count, data.articles.length)}`, `frame-${index}`));
+  });
+}
+let loadingFocus = null;
+function setLoadingStep(step, titles = null) {
+  document.querySelectorAll('[data-step]').forEach(item => {
+    if (Number(item.dataset.step) === step) item.setAttribute('aria-current', 'step');
+    else item.removeAttribute('aria-current');
+  });
+  byId('loading-status').textContent = ['뉴스를 수집하고 있습니다.', '수집한 헤드라인의 프레임을 분석하고 있습니다.', '분석 결과와 근거를 정리하고 있습니다.'][step - 1];
+  if (titles !== null || step === 1) renderHeadlineStream(titles || []);
+}
+function renderHeadlineStream(titles) {
+  byId('headline-stream').replaceChildren();
+  for (let row = 0; row < 6; row += 1) {
+    const line = element('div', undefined, 'stream-row');
+    const group = element('div', undefined, 'stream-group');
+    const selected = titles.length ? Array.from({ length: Math.min(6, titles.length) }, (_, index) => titles[(row * 3 + index) % titles.length]) : Array(5).fill(null);
+    for (const title of selected) group.append(element('span', title || undefined, title ? 'stream-title' : 'stream-placeholder'));
+    // 같은 묶음을 두 번 배치해 CSS 이동이 자연스럽게 이어지게 합니다.
+    line.append(group, group.cloneNode(true)); byId('headline-stream').append(line);
+  }
+}
+function showLoading(step, titles = []) {
+  loadingFocus = document.activeElement;
+  setLoadingStep(step, titles);
+  byId('loading-screen').hidden = false;
+  document.body.classList.add('is-loading');
+  byId('search-shell').inert = true; byId('result-scroll').inert = true; byId('section-nav').inert = true;
+  byId('loading-screen').focus();
+}
+function hideLoading() {
+  byId('loading-screen').hidden = true;
+  document.body.classList.remove('is-loading');
+  byId('search-shell').inert = false; byId('result-scroll').inert = false; byId('section-nav').inert = false;
+  loadingFocus?.focus(); loadingFocus = null;
+}
+function updateSectionMode(hasArticles) {
+  byId('article-evidence').hidden = !hasArticles;
+  for (const id of ['section-distribution', 'section-headlines', 'section-comparison']) byId(id).hidden = !hasArticles;
+  byId('section-nav').hidden = !hasArticles;
+}
+function navigateSection(id) {
+  const section = byId(id);
+  activateSection(section);
+  section.scrollTop = 0;
+  section.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' });
+}
+function activateSection(section) {
+  if (!section.classList.contains('section-active')) section.classList.add('section-active');
+}
+document.querySelectorAll('[data-go-section]').forEach(button => button.addEventListener('click', () => {
+  const target = byId(button.dataset.goSection);
+  // 0건 결과 등으로 숨긴 섹션은 건너뜁니다.
+  if (target.hidden || (target.closest('#results') && byId('results').hidden)) {
+    navigateSection('section-method'); return;
+  }
+  navigateSection(target.id); target.focus({ preventScroll: true });
+}));
+function renderSectionInsights(data) {
+  const total = data.articles.length;
+  const top = Math.max(0, ...Object.values(data.distribution?.frames || {}));
+  const leaders = FRAMES.filter(frame => top > 0 && data.distribution.frames[frame] === top);
+  const sources = new Set(data.articles.map(article => article.publisher)).size;
+  const perspectives = FRAMES.filter(frame => (data.distribution?.frames[frame] || 0) > 0).length;
+  const set = (id, copy, insight) => {
+    byId(`headline-${id}`).textContent = copy;
+    byId(`insight-${id}`).textContent = insight;
+  };
+  set('briefing', total ? `${total}개의 제목, 지금 읽어야 할 쟁점.` : '잠시, 살펴볼 제목이 부족해요.', total ? `‘${data.keyword}’의 최근 보도를 헤드라인에 드러난 내용만으로 정리했습니다.` : '다른 키워드로 새로운 보도를 찾아보세요.');
+  set('distribution', leaders.length === 1 ? `이 표본의 무게중심은 ‘${leaders[0]}’.` : '하나의 이슈, 여러 프레임의 무게.', leaders.length ? `${leaders.join(' · ')} ${top}건 · 전체 ${total}건 기준 ${percent(top, total)}${leaders.length > 1 ? '씩으로 공동 최다입니다.' : '로 가장 많습니다.'} 감성은 제목의 어조를 따로 봅니다.` : '분포를 계산할 기사가 없습니다.');
+  set('headlines', `${perspectives}개의 분류로, 같은 이슈 다시 보기.`, '아래 제목을 나란히 읽으며 무엇을 강조했는지 비교해 보세요. 판단 보류는 뚜렷한 프레임을 정하기 어려운 경우입니다.');
+  set('comparison', `${sources}개 언론사, 강조점을 비교하다.`, '차이는 이 표본의 건수와 비율로 확인합니다. 언론사의 전체 성향을 뜻하지 않습니다.');
+  set('method', '해석보다 먼저, 근거를 확인하세요.', `${total}건의 포함 기사와 ${data.meta.overseasExcludedCount || 0}건의 제외 기사, 분석 기준을 공개합니다. 연구자 도구에서 같은 표본을 직접 검증할 수 있습니다.`);
+}
+document.querySelectorAll('[data-section]').forEach(link => link.addEventListener('click', event => {
+  event.preventDefault(); navigateSection(link.dataset.section); byId(link.dataset.section).focus({ preventScroll: true });
+}));
+if ('IntersectionObserver' in window) {
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(item => {
+      if (item.isIntersecting) activateSection(item.target);
+      else item.target.classList.remove('section-active');
+    });
+    const entry = entries.filter(item => item.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+    if (!entry) return;
+    document.querySelectorAll('[data-section]').forEach(link => {
+      if (link.dataset.section === entry.target.id) link.setAttribute('aria-current', 'true');
+      else link.removeAttribute('aria-current');
+    });
+  }, { root: byId('result-scroll'), threshold: [0.3, 0.6] });
+  document.querySelectorAll('.result-section').forEach(section => observer.observe(section));
+}
+byId('home-link').addEventListener('click', event => {
+  event.preventDefault();
+  if (isLoading) return;
+  document.body.classList.remove('has-results');
+  byId('results').hidden = true; byId('section-nav').hidden = true;
+  byId('article-evidence').hidden = true; byId('excluded-section').hidden = true;
+  window.scrollTo({ top: 0, behavior: 'instant' }); byId('keyword').focus();
+});
+
 function formatAnalysisDate(data) {
   const value = data.meta.analyzedAt || data.meta.collectedAt;
   return value ? new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '일시 미확인';
@@ -252,7 +366,13 @@ function renderBriefing(data) {
     for (const id of issue.articleIds) {
       const link = element('a', `기사 ${id}`, 'evidence-link');
       link.href = `#article-${id}`;
-      link.addEventListener('click', () => { byId(`article-${id}`)?.focus(); });
+      link.addEventListener('click', event => {
+        event.preventDefault();
+        const row = byId(`article-${id}`);
+        if (!row) return;
+        navigateSection('section-method');
+        row.scrollIntoView({ block: 'center', behavior: 'instant' }); row.focus({ preventScroll: true });
+      });
       li.append(link);
     }
     byId('briefing-list').append(li);
@@ -355,6 +475,8 @@ async function collectHeadlines() {
     byId('status').className = 'error'; byId('keyword').setAttribute('aria-invalid','true'); setBusy(false); return;
   }
   byId('keyword').removeAttribute('aria-invalid'); setBusy(true);
+  document.body.classList.add('has-results');
+  updateSectionMode(false);
   byId('status').textContent = '최근 뉴스 헤드라인을 수집하고 있습니다...';
   try {
     const data = await readResponse(await fetch('/api/news?q=' + encodeURIComponent(keyword)));
@@ -363,6 +485,7 @@ async function collectHeadlines() {
     byId('publisher-toggle').textContent = '언론사 보기';
     byId('publisher-toggle').setAttribute('aria-pressed','false');
     renderTitles(data);
+    navigateSection('section-method');
     byId('results-title').textContent = '‘' + keyword + '’ 수집된 헤드라인';
     const m = data.meta;
     byId('collection-info').textContent = '받은 ' + m.receivedCount + '건 · 날짜 제외 ' + m.dateExcludedCount + '건 · 형식 제외 ' + (m.invalidExcludedCount || 0) + '건 · 중복 제외 ' + m.duplicateExcludedCount + '건 · 제한 제외 ' + (m.limitExcludedCount || 0) + '건 · 최종 ' + data.articles.length + '건';
@@ -373,6 +496,10 @@ async function collectHeadlines() {
 }
 function displayResult(data) {
   currentResult = data;
+  document.querySelectorAll('.result-section').forEach(section => { section.classList.remove('section-active'); section.scrollTop = 0; });
+  renderSectionInsights(data);
+  document.body.classList.add('has-results');
+  updateSectionMode(data.articles.length > 0);
   renderScopeNotice(data);
   byId('results').hidden = false; byId('analysis-notice').hidden = false;
   byId('results-title').textContent = '‘' + data.keyword + '’ 분석 결과';
@@ -380,7 +507,16 @@ function displayResult(data) {
   const emptyMessage = data.meta.totalAnalyzedCount ? '분석할 국내 기사가 없습니다. 다른 키워드로 시도해 주세요.' : '최근 7일간 관련 뉴스를 찾지 못했습니다. 다른 키워드로 시도해 주세요.';
   byId('empty-message').textContent = emptyMessage;
   byId('small-sample').hidden = data.articles.length === 0 || data.articles.length >= 10;
-  if (data.articles.length) { renderAnalysis(data); renderBriefing(data); byId('ai-results').hidden = false; }
+  byId('ai-results').hidden = false;
+  if (data.articles.length) { renderAnalysis(data); renderBriefing(data); }
+  else {
+    byId('briefing-list').replaceChildren(); byId('frame-strip').replaceChildren(); byId('frame-legend').replaceChildren(); byId('summary-numbers').replaceChildren();
+    byId('briefing-notice').textContent = emptyMessage;
+    byId('analysis-date').textContent = '';
+  }
+  byId('share-button').hidden = !data.articles.length;
+  byId('email-link').hidden = !data.articles.length;
+  navigateSection('section-briefing');
   byId('status').textContent = data.message || emptyMessage;
 }
 async function requestAnalysis(research = false) {
@@ -399,15 +535,27 @@ async function requestAnalysis(research = false) {
   byId('excluded-section').hidden = true; byId('analysis-notice').hidden = true;
   byId('share-status').textContent = ''; byId('share-fallback').hidden = true;
   byId('status').className = ''; setBusy(true);
+  updateSectionMode(false);
+  showLoading(research ? 2 : 1, research ? collectedResult.articles.map(item => item.title) : []);
   byId('status').textContent = research ? '수집된 제목을 분석하고 있습니다... (10~30초 정도 걸립니다)' : '뉴스를 수집하고 제목을 분석하고 있습니다... (10~30초 정도 걸립니다)';
   try {
-    const payload = research ? {keyword:collectedResult.keyword,articles:collectedResult.articles} : {keyword};
+    const collected = research ? collectedResult : await readResponse(await fetch('/api/news?q=' + encodeURIComponent(keyword)));
+    if (!collected.articles.length) {
+      displayResult({ ...collected, articles: [], excludedArticles: [], meta: { ...collected.meta, totalAnalyzedCount: 0, overseasExcludedCount: 0, unknownScopeCount: 0 }, message: '최근 7일간 관련 뉴스를 찾지 못했습니다. 다른 키워드로 시도해 주세요.' });
+      return;
+    }
+    setLoadingStep(2, collected.articles.map(item => item.title));
+    const payload = {keyword:collected.keyword,articles:collected.articles};
     const data = await readResponse(await fetch('/api/analyze', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}));
+    // 원래 RSS 정리 정보는 수집 응답에서 유지합니다. 분석 메타·번호는 서버 값을 사용합니다.
+    data.meta = { ...collected.meta, ...data.meta, receivedCount: collected.meta.receivedCount };
+    setLoadingStep(3);
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     if (research) researcherResult = data;
     if (data.articles.length) saveRecentSearch(keyword);
     displayResult(data);
   } catch(error) { showRequestError(error); }
-  finally { setBusy(false); }
+  finally { setBusy(false); hideLoading(); }
 }
 byId('reveal-button').addEventListener('click', () => requestAnalysis(true));
 byId('collect-button').addEventListener('click', collectHeadlines);
