@@ -59,6 +59,8 @@ summary는 국내 또는 판단 불가로 판정한 기사만 근거로 한국�
 [추가로 살펴볼 관점 제안]
 additionalPerspective.text에 국내 또는 판단 불가 기사만 근거로 관점 제안 하나를 한국어 한 문장으로 쓰세요. 해외 기사는 근거에서 제외하세요. 집계에 포함한 제목에 한정된 탐색 제안으로 표현하고 전체 보도에서 실제 누락되었다고 단정하지 마세요. 모든 기사가 해외이면 빈 문자열로 작성하세요.
 [출력]
+[오늘의 핵심 브리핑]
+briefing에 국내 또는 판단 불가 기사만 근거로 서로 다른 핵심 쟁점 3~5개를 작성하세요. 각 항목은 text(40자 안팎의 한국어 한 문장, 최대 60자)와 articleIds(근거 기사 번호 1~3개)입니다. 헤드라인에 실제로 드러난 내용만 쓰고 제목에 없는 수치·사실·인과·평가를 추가하지 마세요. 제목의 주장을 검증된 사실로 단정하지 마세요. 해외 기사 번호와 없는 번호를 참조하지 마세요. 포함 기사 수나 쟁점이 부족하면 내용을 지어내지 말고 1~2개만 작성해도 됩니다. 모든 기사가 해외이면 빈 배열로 작성하세요. 전체 응답을 간결하게 유지하세요.
 종합 해설의 각 문장과 관점 제안은 각각 60자 안팎으로 간결하게 작성하고 80자를 넘기지 마세요. 분류 기준을 생략하거나 근거 없는 단정을 하지 마세요.
 지정된 JSON 스키마만 따르세요. articles에는 입력의 모든 기사 번호를 정확히 한 번씩 포함하고 id, frame, sentiment, confidence, reason, scope, scopeReason을 작성하세요. 제목·언론사·날짜·링크·분포·대표 기사를 생성하지 마세요.`;
 
@@ -104,7 +106,11 @@ function createAnalysisSchema(articles) {
       scope: { type: 'string', enum: SCOPES }, scopeReason: { type: 'string', maxLength: 25 }
     }) },
     summary: { type: 'array', minItems: 0, maxItems: 3, items: { ...text, maxLength: 80 } },
-    additionalPerspective: object({ text: { type: 'string', maxLength: 80 } })
+    additionalPerspective: object({ text: { type: 'string', maxLength: 80 } }),
+    briefing: { type: 'array', minItems: 0, maxItems: 5, items: object({
+      text: { ...text, maxLength: 60 },
+      articleIds: { type: 'array', minItems: 1, maxItems: 3, items: { type: 'integer', enum: articles.map(a => a.id) } }
+    }) }
   });
 }
 
@@ -119,7 +125,7 @@ function validateAnalysisResult(response, articles) {
   const hasKeys = (obj, keys) => obj && typeof obj === 'object' && !Array.isArray(obj) && Object.keys(obj).length === keys.length && keys.every(key => Object.hasOwn(obj, key));
   const text = value => typeof value === 'string' && value.trim().length > 0;
   const length = value => [...value].length;
-  if (!hasKeys(data, ['articles', 'summary', 'additionalPerspective']) || !Array.isArray(data.articles) || data.articles.length !== articles.length) throw invalidAnalysis();
+  if (!hasKeys(data, ['articles', 'summary', 'additionalPerspective', 'briefing']) || !Array.isArray(data.articles) || data.articles.length !== articles.length) throw invalidAnalysis();
   const expected = new Set(articles.map(a => a.id));
   const seen = new Set();
   for (const item of data.articles) {
@@ -132,6 +138,11 @@ function validateAnalysisResult(response, articles) {
   if (hasIncluded) {
     if (data.summary.length !== 3 || !data.summary.every(value => text(value) && length(value) <= 80) || !text(data.additionalPerspective.text) || length(data.additionalPerspective.text) > 80) throw invalidAnalysis();
   } else if (data.summary.length !== 0 || data.additionalPerspective.text !== '') throw invalidAnalysis();
+  const includedIds = new Set(data.articles.filter(a => a.scope !== '해외').map(a => a.id));
+  if (!Array.isArray(data.briefing) || data.briefing.length > 5 || (hasIncluded ? data.briefing.length < 1 : data.briefing.length !== 0)) throw invalidAnalysis();
+  for (const issue of data.briefing) {
+    if (!hasKeys(issue, ['text', 'articleIds']) || !text(issue.text) || length(issue.text) > 60 || !Array.isArray(issue.articleIds) || issue.articleIds.length < 1 || issue.articleIds.length > 3 || new Set(issue.articleIds).size !== issue.articleIds.length || !issue.articleIds.every(id => Number.isInteger(id) && includedIds.has(id))) throw invalidAnalysis();
+  }
   return data;
 }
 
@@ -424,7 +435,7 @@ app.post('/api/analyze', limitAnalyzeRequests, express.json({ limit: '128kb' }),
     // 전달 목록은 limit로 자르지 않고 검증한 목록 전체를 그대로 분석합니다.
     const selected = clientArticles || news.articles.slice(0, limit);
     telemetry.articleCount = selected.length;
-    let analysis = { articles: [], summary: [], additionalPerspective: { text: '' } };
+    let analysis = { articles: [], summary: [], additionalPerspective: { text: '' }, briefing: [] };
     if (selected.length) analysis = await analyzeHeadlines(keyword, selected, telemetry);
     else telemetry.usage = { inputTokens: 0, outputTokens: 0 };
     const correction = correctUnknownScopes(mergeAnalysisResults(selected, analysis));
@@ -446,7 +457,7 @@ app.post('/api/analyze', limitAnalyzeRequests, express.json({ limit: '128kb' }),
       ? '서버 지역 보정으로 집계 대상이 달라져 AI의 관점 제안은 제공하지 않습니다.' : analysis.additionalPerspective.text;
     const result = {
       ...news,
-      meta: { ...news.meta, model: MODEL, methodVersion: '1.4', analysisScope: '헤드라인', requestedLimit: limit,
+      meta: { ...news.meta, model: MODEL, methodVersion: '1.5', analysisScope: '헤드라인', requestedLimit: limit,
         collectedArticleCount: news.articles.length, articleCount: articles.length,
         totalAnalyzedCount: allArticles.length, overseasExcludedCount: excludedArticles.length,
         finalArticleCount: articles.length, unknownScopeCount, serverScopeCorrectionCount: correction.correctionCount,
@@ -454,6 +465,9 @@ app.post('/api/analyze', limitAnalyzeRequests, express.json({ limit: '128kb' }),
         analyzedAt: allArticles.length ? new Date().toISOString() : null,
         durationMs: Date.now() - started, aiDurationMs: telemetry.aiDurationMs, usage: telemetry.usage },
       articles, excludedArticles, distribution: calculateDistributions(articles), publisherComparison: comparePublishers(articles),
+      // 보정 전 표본을 근거로 생성한 브리핑은 최종 표본의 설명으로 재사용하지 않습니다.
+      briefing: articles.length && !correction.correctionCount ? analysis.briefing : [],
+      briefingNotice: !articles.length ? '분석할 국내 기사가 없습니다.' : correction.correctionCount ? '서버 지역 보정으로 표본이 달라져 핵심 브리핑을 제공하지 않습니다. 아래 기사와 분포를 확인해 주세요.' : analysis.briefing.length < 3 ? '제목에서 확인할 수 있는 쟁점이 적어 3개 미만으로 제공합니다.' : '',
       representatives: selectRepresentatives(articles), summary,
       additionalPerspective: { text: perspective, qualification: '수집된 제목만을 바탕으로 한 제안입니다.' },
       warnings: [...news.warnings, ...(correction.correctionCount ? [`서버가 판단 불가 ${correction.correctionCount}건을 해외로 보정했습니다. 기존 AI 해설·관점 제안은 제공하지 않습니다.`] : []), ...(excludedArticles.length ? [`해외 기사 ${excludedArticles.length}건을 집계에서 제외했습니다.`] : []), ...(unknownScopeCount ? [`지역 판단 불가 ${unknownScopeCount}건을 포함했습니다.`] : [])],

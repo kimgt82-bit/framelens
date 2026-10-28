@@ -100,6 +100,16 @@ input:disabled { color: var(--muted); background: #eef0f3; }
 .recent-buttons { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
 .recent-buttons button { max-width: 100%; overflow-wrap: anywhere; text-align: left; padding: 6px 12px; }
 #recent-status:empty { display: none; }
+.research-tools > summary { cursor: pointer; font-size: 1.2rem; font-weight: 700; color: var(--navy); }
+.research-tools[open] > summary { margin-bottom: 24px; }
+.briefing { border-top: 3px solid var(--navy); }
+#briefing-list { padding-left: 24px; }
+#briefing-list li { margin: 16px 0; padding-left: 8px; }
+.evidence-link { display: inline-block; margin-left: 8px; font-size: .85rem; }
+.button-link { display: inline-block; padding: 10px 20px; border: 1px solid #858d98; text-decoration: none; font-weight: 700; }
+#share-text { width: 100%; padding: 12px; font: inherit; color: var(--ink); background: #fff; border: 1px solid #858d98; resize: vertical; }
+#article-rows tr:target { background: #e8edf7; outline: 2px solid var(--navy); outline-offset: -2px; }
+#article-rows tr { scroll-margin-top: 24px; }
 @media (max-width: 700px) {
   .container { width: calc(100% - 28px); }
   .hero { padding: 28px 0; }
