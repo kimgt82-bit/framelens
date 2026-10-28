@@ -2,6 +2,7 @@ const path = require('node:path');
 const express = require('express');
 const Parser = require('rss-parser');
 const OpenAI = require('openai');
+const { isIP } = require('node:net');
 
 // 비밀 정보는 출력하지 않고 환경변수만 준비합니다.
 require('dotenv').config({ quiet: true });
@@ -33,7 +34,7 @@ scope는 국내·해외·판단 불가 중 하나이며 다음 판정 순서 하
 ② 해외 소식이라도 한국 정부·기업·국민·시장에 미치는 영향이 제목의 중심이면 국내입니다.
 ③ 외국을 가리키는 단서가 전혀 없으면 국내입니다. 한국어 Google 뉴스 한국판에서 수집한 기사이므로 이 작업의 운영상 기본값은 국내입니다. 실제 사건 위치를 확인했다는 의미는 아닙니다.
 ④ 외국 단서와 한국 단서가 섞여 있어서 어느 쪽이 중심인지 정말 알 수 없을 때만 판단 불가입니다.
-특정 기사의 정답이나 특정 국가 예시를 암기하지 말고 위 일반 원칙을 적용하세요. scopeReason에는 적용한 원칙과 제목 표현에 근거한 이유를 한국어 한 문장으로 작성하세요. scope와 프레임은 별개이며 해외 기사도 모든 분류 항목과 입력 번호를 반환하세요.
+특정 기사의 정답이나 특정 국가 예시를 암기하지 말고 위 일반 원칙을 적용하세요. scopeReason은 국내이면 반드시 빈 문자열로 두고, 해외 또는 판단 불가일 때만 제목 표현에 근거한 짧은 이유를 25자 이내로 작성하세요. scope와 프레임은 별개이며 해외 기사도 모든 분류 항목과 입력 번호를 반환하세요.
 [프레임 판단 기준표]
 각 제목에 다음 중 대표 프레임 하나를 부여하세요.
 갈등: 개인·집단·기관 사이의 대립을 강조합니다. 찬반 충돌, 협상 결렬, 상호 비판, 이해관계 대립이 중심인지 봅니다. 두 주체의 등장만으로 분류하지 마세요. 가상 예시: 최저임금 인상폭 놓고 노사 정면충돌.
@@ -52,12 +53,13 @@ scope는 국내·해외·판단 불가 중 하나이며 다음 판정 순서 하
 [확신도]
 높음·중간·낮음 중 하나입니다. 분류 근거의 명확성에 관한 자체 판단이며 정답 확률이 아닙니다. 근거 부족이 분명하면 판단 보류에도 높은 확신도를 부여할 수 있습니다.
 [근거]
-reason은 제목에 실제로 나타난 표현에 근거한 한국어 한 문장입니다. 본문의 사실이나 작성자의 의도를 만들어 내지 마세요.
+reason은 제목에 실제로 나타난 표현에 근거한 한국어 25자 이내의 짧은 한 구절입니다. 본문의 사실이나 작성자의 의도를 만들어 내지 마세요.
 [종합 해설]
 summary는 국내 또는 판단 불가로 판정한 기사만 근거로 한국어 문장 3개를 담은 배열로 작성하세요. 해외 기사는 해설 근거에서 제외하세요. 제목에서 관찰되는 강조점과 해석상의 한계를 설명하세요. 판단 불가 기사를 국내로 단정하지 마세요. 언론사 간 차이나 성향을 언급하지 마세요. 정확한 건수·비율은 서버가 계산하므로 숫자를 추측하지 마세요. 적은 표본을 일반화하지 마세요. 모든 기사가 해외이면 summary는 빈 배열로 작성하세요.
 [추가로 살펴볼 관점 제안]
 additionalPerspective.text에 국내 또는 판단 불가 기사만 근거로 관점 제안 하나를 한국어 한 문장으로 쓰세요. 해외 기사는 근거에서 제외하세요. 집계에 포함한 제목에 한정된 탐색 제안으로 표현하고 전체 보도에서 실제 누락되었다고 단정하지 마세요. 모든 기사가 해외이면 빈 문자열로 작성하세요.
 [출력]
+종합 해설의 각 문장과 관점 제안은 각각 60자 안팎으로 간결하게 작성하고 80자를 넘기지 마세요. 분류 기준을 생략하거나 근거 없는 단정을 하지 마세요.
 지정된 JSON 스키마만 따르세요. articles에는 입력의 모든 기사 번호를 정확히 한 번씩 포함하고 id, frame, sentiment, confidence, reason, scope, scopeReason을 작성하세요. 제목·언론사·날짜·링크·분포·대표 기사를 생성하지 마세요.`;
 
 function validateAnalyzeRequest(body) {
@@ -80,11 +82,11 @@ function createAnalysisSchema(articles) {
     articles: { type: 'array', minItems: articles.length, maxItems: articles.length, items: object({
       id: { type: 'integer', enum: articles.map(a => a.id) },
       frame: { type: 'string', enum: FRAMES }, sentiment: { type: 'string', enum: SENTIMENTS },
-      confidence: { type: 'string', enum: CONFIDENCES }, reason: text,
-      scope: { type: 'string', enum: SCOPES }, scopeReason: text
+      confidence: { type: 'string', enum: CONFIDENCES }, reason: { ...text, maxLength: 25 },
+      scope: { type: 'string', enum: SCOPES }, scopeReason: { type: 'string', maxLength: 25 }
     }) },
-    summary: { type: 'array', minItems: 0, maxItems: 3, items: text },
-    additionalPerspective: object({ text: { type: 'string' } })
+    summary: { type: 'array', minItems: 0, maxItems: 3, items: { ...text, maxLength: 80 } },
+    additionalPerspective: object({ text: { type: 'string', maxLength: 80 } })
   });
 }
 
@@ -98,24 +100,27 @@ function validateAnalysisResult(response, articles) {
   try { data = JSON.parse(response.output_text); } catch { throw invalidAnalysis(); }
   const hasKeys = (obj, keys) => obj && typeof obj === 'object' && !Array.isArray(obj) && Object.keys(obj).length === keys.length && keys.every(key => Object.hasOwn(obj, key));
   const text = value => typeof value === 'string' && value.trim().length > 0;
+  const length = value => [...value].length;
   if (!hasKeys(data, ['articles', 'summary', 'additionalPerspective']) || !Array.isArray(data.articles) || data.articles.length !== articles.length) throw invalidAnalysis();
   const expected = new Set(articles.map(a => a.id));
   const seen = new Set();
   for (const item of data.articles) {
-    if (!hasKeys(item, ['id', 'frame', 'sentiment', 'confidence', 'reason', 'scope', 'scopeReason']) || !Number.isInteger(item.id) || !expected.has(item.id) || seen.has(item.id) || !FRAMES.includes(item.frame) || !SENTIMENTS.includes(item.sentiment) || !CONFIDENCES.includes(item.confidence) || !text(item.reason) || !SCOPES.includes(item.scope) || !text(item.scopeReason)) throw invalidAnalysis();
+    if (!hasKeys(item, ['id', 'frame', 'sentiment', 'confidence', 'reason', 'scope', 'scopeReason']) || !Number.isInteger(item.id) || !expected.has(item.id) || seen.has(item.id) || !FRAMES.includes(item.frame) || !SENTIMENTS.includes(item.sentiment) || !CONFIDENCES.includes(item.confidence) || !text(item.reason) || length(item.reason) > 25 || !SCOPES.includes(item.scope) || typeof item.scopeReason !== 'string' || length(item.scopeReason) > 25) throw invalidAnalysis();
+    if (item.scope === '국내' ? item.scopeReason !== '' : !text(item.scopeReason)) throw invalidAnalysis();
     seen.add(item.id);
   }
   const hasIncluded = data.articles.some(item => item.scope !== '해외');
   if (!Array.isArray(data.summary) || !hasKeys(data.additionalPerspective, ['text'])) throw invalidAnalysis();
   if (hasIncluded) {
-    if (data.summary.length !== 3 || !data.summary.every(text) || !text(data.additionalPerspective.text)) throw invalidAnalysis();
+    if (data.summary.length !== 3 || !data.summary.every(value => text(value) && length(value) <= 80) || !text(data.additionalPerspective.text) || length(data.additionalPerspective.text) > 80) throw invalidAnalysis();
   } else if (data.summary.length !== 0 || data.additionalPerspective.text !== '') throw invalidAnalysis();
   return data;
 }
 
 function mapOpenAIError(error) {
   if (error.code === 'AI_응답_형식_오류') return error;
-  if (error.name === 'APIConnectionTimeoutError' || error.name === 'AbortError') return apiError(504, 'AI_시간_초과', 'AI 분석이 60초를 초과했습니다. 잠시 후 다시 시도해 주세요.', true);
+  // SDK 오류의 name은 Error일 수 있으므로 실제 클래스부터 확인합니다.
+  if (error instanceof OpenAI.APIConnectionTimeoutError || error.name === 'APIConnectionTimeoutError' || error.name === 'AbortError' || error.status === 408 || ['ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT'].includes(error.code) || ['ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT'].includes(error.cause?.code)) return apiError(504, 'AI_시간_초과', '분석 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.', true);
   if (error.status === 401) return apiError(502, 'AI_인증_실패', 'AI 서비스 인증에 실패했습니다. 서버의 API 키 설정을 확인해 주세요.', false);
   if (error.status === 429) {
     if (['insufficient_quota', 'billing_hard_limit_reached'].includes(error.code)) return apiError(429, 'AI_사용량_부족', 'AI 서비스 사용 가능량이 부족합니다. 결제와 사용량 설정을 확인해 주세요.', false);
@@ -130,15 +135,18 @@ function mapOpenAIError(error) {
 async function analyzeHeadlines(keyword, articles, telemetry) {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) throw apiError(503, 'AI_키_미설정', '서버에 OpenAI API 키가 설정되지 않았습니다.', false);
-  const client = new OpenAI({ apiKey, timeout: 60000, maxRetries: 0 });
+  const client = new OpenAI({ apiKey, timeout: 90000, maxRetries: 0 });
   const started = Date.now();
   try {
     const response = await client.responses.create({
       model: MODEL,
+      reasoning: { effort: 'none' },
+      max_output_tokens: 8000,
       input: [{ role: 'developer', content: DEVELOPER_INSTRUCTIONS }, { role: 'user', content: buildAnalysisInput(keyword, articles) }],
       text: { format: { type: 'json_schema', name: 'headline_analysis', strict: true, schema: createAnalysisSchema(articles) } }
     });
-    telemetry.usage = { inputTokens: response.usage?.input_tokens ?? null, outputTokens: response.usage?.output_tokens ?? null };
+    telemetry.usage = { inputTokens: response.usage?.input_tokens ?? null, outputTokens: response.usage?.output_tokens ?? null,
+      reasoningTokens: response.usage?.output_tokens_details?.reasoning_tokens ?? null };
     return validateAnalysisResult(response, articles);
   } catch (error) {
     throw mapOpenAIError(error);
@@ -352,7 +360,38 @@ app.get('/api/news', async (req, res) => {
   }
 });
 // JSON 해석은 분석 API에만 적용합니다.
-app.post('/api/analyze', express.json({ limit: '16kb' }), async (req, res) => {
+const analyzeRequests = new Map();
+function getClientIp(req) {
+  // Vercel 경유 요청에만 플랫폼이 설정하는 전달 헤더를 신뢰합니다.
+  const forwarded = process.env.VERCEL === '1' ? req.headers['x-vercel-forwarded-for'] || req.headers['x-forwarded-for'] : undefined;
+  const candidate = typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : '';
+  const ip = isIP(candidate) ? candidate : req.socket?.remoteAddress || 'unknown';
+  return ip.startsWith('::ffff:') && isIP(ip.slice(7)) === 4 ? ip.slice(7) : ip;
+}
+function limitAnalyzeRequests(req, res, next) {
+  const now = Date.now();
+  // 요청 때 만료 항목을 정리하여 타이머 없이 메모리 누적을 줄입니다.
+  for (const [key, timestamps] of analyzeRequests) {
+    const active = timestamps.filter(time => now - time < 60000);
+    if (active.length) analyzeRequests.set(key, active);
+    else analyzeRequests.delete(key);
+  }
+  const ip = getClientIp(req);
+  const timestamps = analyzeRequests.get(ip) || [];
+  if (timestamps.length >= 5) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((timestamps[0] + 60000 - now) / 1000));
+    res.set('Retry-After', String(retryAfterSeconds));
+    return res.status(429).json({ ok: false, error: {
+      code: '요청_횟수_초과', message: `요청이 너무 많습니다. ${retryAfterSeconds}초 후에 다시 시도해 주세요.`,
+      retryable: true, retryAfterSeconds
+    } });
+  }
+  timestamps.push(now);
+  analyzeRequests.set(ip, timestamps);
+  next();
+}
+
+app.post('/api/analyze', limitAnalyzeRequests, express.json({ limit: '16kb' }), async (req, res) => {
   const started = Date.now();
   const telemetry = { articleCount: 0, aiDurationMs: 0, usage: { inputTokens: null, outputTokens: null } };
   let logKeyword = '(입력 오류)';
@@ -385,7 +424,7 @@ app.post('/api/analyze', express.json({ limit: '16kb' }), async (req, res) => {
       ? '서버 지역 보정으로 집계 대상이 달라져 AI의 관점 제안은 제공하지 않습니다.' : analysis.additionalPerspective.text;
     const result = {
       ...news,
-      meta: { ...news.meta, model: MODEL, methodVersion: '1.3', analysisScope: '헤드라인', requestedLimit: limit,
+      meta: { ...news.meta, model: MODEL, methodVersion: '1.4', analysisScope: '헤드라인', requestedLimit: limit,
         collectedArticleCount: news.articles.length, articleCount: articles.length,
         totalAnalyzedCount: allArticles.length, overseasExcludedCount: excludedArticles.length,
         finalArticleCount: articles.length, unknownScopeCount, serverScopeCorrectionCount: correction.correctionCount,

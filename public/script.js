@@ -1,4 +1,4 @@
-// 모든 기사·언론사·분류는 시제품을 위한 가상 자료입니다.
+// 아래 가상 자료는 화면 확인용으로 보존하며 실제 검색에서는 사용하지 않습니다.
 const FRAMES = ['갈등', '인간적 흥미', '경제적 결과', '도덕성', '책임 귀인', '판단 보류'];
 const SENTIMENTS = ['긍정', '중립', '부정'];
 const examples = [
@@ -20,7 +20,7 @@ const articles = examples.map(([title, publisher, frame, sentiment, confidence, 
 }));
 const counts = (items, field, labels) => Object.fromEntries(labels.map(label => [label, items.filter(item => item[field] === label).length]));
 
-// 나중에는 이 객체를 POST /api/analyze 응답으로 바꿉니다.
+// 화면 확인용 미사용 자료입니다. 실제 검색에서는 서버 응답만 사용합니다.
 const MOCK_RESPONSE = {
   ok: true, keyword: '최저임금',
   meta: { collectedAt: '2026-10-28T12:00:00+09:00', analyzedAt: '2026-10-28T12:00:10+09:00', periodDays: 7, maxArticles: 30, receivedCount: 10, dateExcludedCount: 0, duplicateExcludedCount: 0, articleCount: 10, model: 'gpt-6-luna', methodVersion: '1.0', analysisScope: '헤드라인' },
@@ -42,6 +42,108 @@ const MOCK_RESPONSE = {
 };
 
 const byId = id => document.getElementById(id);
+let currentResult = null;
+let isLoading = false;
+const RECENT_SEARCH_KEY = 'frameLens.recentSearches';
+let recentSearches = readRecentSearches();
+function readRecentSearches() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(RECENT_SEARCH_KEY) || '[]');
+    if (!Array.isArray(stored)) return [];
+    return [...new Set(stored.filter(value => typeof value === 'string').map(value => value.trim()).filter(value => value.length > 0 && value.length <= 100))].slice(0, 5);
+  } catch { return []; }
+}
+function renderRecentSearches() {
+  byId('recent-buttons').replaceChildren();
+  recentSearches.forEach(keyword => {
+    const button = element('button', keyword);
+    button.type = 'button'; button.disabled = isLoading;
+    button.addEventListener('click', () => {
+      if (isLoading) return;
+      byId('keyword').value = keyword;
+      requestAnalysis();
+    });
+    byId('recent-buttons').append(button);
+  });
+  byId('recent-empty').hidden = recentSearches.length > 0;
+  byId('clear-recent').disabled = isLoading || recentSearches.length === 0;
+}
+function saveRecentSearch(keyword) {
+  recentSearches = [keyword, ...recentSearches.filter(value => value !== keyword)].slice(0, 5);
+  try {
+    localStorage.setItem(RECENT_SEARCH_KEY, JSON.stringify(recentSearches));
+    byId('recent-status').textContent = '';
+  } catch {
+    byId('recent-status').textContent = '검색 기록을 이 브라우저에 저장하지 못했습니다. 현재 화면에서만 유지됩니다.';
+  }
+  renderRecentSearches();
+}
+let copyTimer;
+let copyGeneration = 0;
+function tsvCell(value) {
+  const cleaned = String(value ?? '').replace(/[\t\r\n]/g, ' ');
+  // 스프레드시트가 복사한 제목을 수식으로 실행하지 않게 합니다.
+  return /^\s*[=+@-]/.test(cleaned) ? `'${cleaned}` : cleaned;
+}
+function buildTsv(items, mode) {
+  const headers = mode === 'manual' ? ['번호', '제목', '내 분류'] : ['번호', '제목', '언론사', 'AI 프레임', '감성', '확신도', '근거'];
+  const rows = items.map(a => mode === 'manual' ? [a.id, a.title, ''] : [a.id, a.title, a.publisher, a.frame, a.sentiment, a.confidence, a.reason]);
+  return [headers, ...rows].map(row => row.map(tsvCell).join('\t')).join('\r\n');
+}
+function resetCopyUi() {
+  copyGeneration += 1;
+  clearTimeout(copyTimer);
+  byId('copy-status').textContent = '';
+  byId('copy-fallback').hidden = true;
+  byId('copy-text').value = '';
+}
+async function copyResults(mode) {
+  if (isLoading || !currentResult?.articles.length) return;
+  const generation = copyGeneration;
+  const text = buildTsv(currentResult.articles, mode);
+  const count = currentResult.articles.length;
+  clearTimeout(copyTimer);
+  try {
+    await navigator.clipboard.writeText(text);
+    if (generation !== copyGeneration) return;
+    byId('copy-fallback').hidden = true;
+    byId('copy-status').textContent = `복사했습니다 (${count}건)`;
+    copyTimer = setTimeout(() => { byId('copy-status').textContent = ''; }, 2500);
+  } catch {
+    if (generation !== copyGeneration) return;
+    byId('copy-status').textContent = '자동 복사가 되지 않았습니다. 아래 내용을 선택해 복사해 주세요.';
+    byId('copy-fallback').hidden = false;
+    byId('copy-text').value = text;
+    byId('copy-text').focus(); byId('copy-text').select();
+  }
+}
+document.querySelectorAll('[data-copy]').forEach(button => button.addEventListener('click', () => copyResults(button.dataset.copy)));
+function articleLink(item) {
+  try {
+    const url = new URL(item.url);
+    if (!['https:', 'http:'].includes(url.protocol)) return element('span', '링크 없음', 'muted');
+    const link = element('a', '기사 보기');
+    link.href = url.href; link.target = '_blank'; link.rel = 'noopener noreferrer';
+    link.setAttribute('aria-label', `${item.title} — 기사 보기`);
+    return link;
+  } catch { return element('span', '링크 없음', 'muted'); }
+}
+function renderScopeNotice(data) {
+  const meta = data.meta;
+  const total = meta.totalAnalyzedCount;
+  byId('scope-notice').textContent = `수집 ${total}건 중 해외 이슈로 판단된 ${meta.overseasExcludedCount}건을 제외하고 ${data.articles.length}건을 분석했습니다.${meta.unknownScopeCount ? ` 지역 판단 불가 ${meta.unknownScopeCount}건 포함.` : ''}`;
+  byId('scope-detail').textContent = `위 수집 건수는 AI 지역 판정 대상입니다. RSS 원래 ${meta.receivedCount}건 중 날짜·중복 등을 정리한 표본을 사용했습니다.${meta.serverScopeCorrectionCount ? ` 서버 지역 보정 ${meta.serverScopeCorrectionCount}건이 포함됩니다.` : ''}`;
+  const excluded = data.excludedArticles || [];
+  byId('excluded-section').hidden = excluded.length === 0;
+  byId('excluded-section').open = false;
+  byId('excluded-rows').replaceChildren();
+  excluded.forEach(item => {
+    const row = element('tr');
+    cell(row, item.id); cell(row, item.title, 'title-cell'); cell(row, item.publisher);
+    cell(row, articleLink(item)); cell(row, item.scopeReason, 'reason-cell');
+    byId('excluded-rows').append(row);
+  });
+}
 function element(tag, text, className) {
   const node = document.createElement(tag);
   if (text !== undefined) node.textContent = text;
@@ -100,22 +202,20 @@ function renderAnalysis(data) {
   table.append(head, body);
   byId('representatives').replaceChildren();
   data.representatives.forEach(group => {
+    if (!group.articleIds.length) return;
     const card = element('div', undefined, 'representative'); card.append(badge(group.frame));
     const list = element('ul');
     group.articleIds.slice(0, 2).forEach(id => {
       const item = data.articles.find(article => article.id === id);
       if (!item) return;
       const li = element('li'); li.append(element('p', item.title), element('span', `${item.publisher} · `, 'muted'));
-      const url = new URL(item.url);
-      if (['https:', 'http:'].includes(url.protocol)) {
-        const link = element('a', '기사 보기 (예시)'); link.href = url.href; link.target = '_blank'; link.rel = 'noopener noreferrer';
-        link.setAttribute('aria-label', `${item.title} — 기사 보기 (가상 기사의 예시 링크)`); li.append(link);
-      }
+      li.append(articleLink(item));
       list.append(li);
     });
     card.append(list); byId('representatives').append(card);
   });
   byId('summary-text').replaceChildren(...data.summary.map(text => element('li', text)));
+  byId('commentary-source').textContent = data.meta.commentarySource === '서버 안내' ? '서버 보정 후 안내' : 'AI 분석';
   byId('perspective-text').textContent = data.additionalPerspective.text;
   byId('perspective-note').textContent = data.additionalPerspective.qualification;
   byId('article-rows').replaceChildren();
@@ -127,30 +227,100 @@ function renderAnalysis(data) {
 }
 
 const definitions = ['찬반 충돌이나 집단 간 대립이 중심입니다.', '개인의 사연과 경험으로 공감을 이끌어 냅니다.', '비용·소득·고용 등 경제적 영향이 중심입니다.', '공정·존엄·도덕적 의무 등 가치 판단이 중심입니다.', '문제의 원인이나 해결 책임을 특정 주체에 연결합니다.', '제목만으로 대표 프레임을 정할 근거가 부족합니다.'];
+byId('clear-recent').addEventListener('click', () => {
+  if (isLoading) return;
+  try {
+    localStorage.removeItem(RECENT_SEARCH_KEY);
+    recentSearches = [];
+    byId('recent-status').textContent = '검색 기록을 지웠습니다.';
+  } catch {
+    byId('recent-status').textContent = '브라우저 저장소의 기록을 지우지 못했습니다. 저장소 접근 설정을 확인해 주세요.';
+  }
+  renderRecentSearches();
+});
+renderRecentSearches();
 FRAMES.forEach((frame, index) => {
   const item = element('div'); item.append(badge(frame), element('p', definitions[index])); byId('method-list').append(item);
 });
 document.querySelectorAll('[data-keyword]').forEach(button => button.addEventListener('click', () => {
+  if (isLoading) return;
   byId('keyword').value = button.dataset.keyword; byId('keyword').focus();
+  requestAnalysis();
 }));
 byId('search-form').addEventListener('submit', event => {
   event.preventDefault();
+  requestAnalysis();
+});
+async function requestAnalysis() {
+  if (isLoading) return;
+  resetCopyUi();
+  currentResult = null;
+  byId('results').hidden = true;
+  byId('status').className = '';
+  byId('status').textContent = '';
   const keyword = byId('keyword').value.trim();
   if (!keyword || keyword.length > 100) {
-    byId('status').textContent = '키워드를 1~100자로 입력해 주세요.';
+    byId('status').textContent = keyword ? '키워드는 100자까지 입력할 수 있습니다.' : '키워드를 입력해 주세요.';
     byId('status').className = 'error'; byId('keyword').setAttribute('aria-invalid', 'true'); byId('keyword').focus(); return;
   }
   byId('keyword').removeAttribute('aria-invalid'); byId('status').className = '';
   byId('ai-results').hidden = true; byId('reveal-button').setAttribute('aria-expanded', 'false');
   byId('reveal-button').textContent = 'AI 결과 보기';
-  byId('results-title').textContent = `‘${keyword}’ 검색 화면 미리보기`;
-  byId('status').textContent = '가상 기사 10건을 표시했습니다. 입력한 키워드와 관계없이 최저임금 예시를 사용합니다.';
-  renderTitles(MOCK_RESPONSE); byId('results').hidden = false;
-});
+  currentResult = null;
+  byId('results').hidden = true;
+  byId('results-title').textContent = `‘${keyword}’ 분석 결과`;
+  isLoading = true;
+  renderRecentSearches();
+  const buttons = [byId('analyze-button'), ...document.querySelectorAll('[data-keyword]')];
+  buttons.forEach(button => { button.disabled = true; });
+  byId('keyword').disabled = true;
+  byId('search-form').setAttribute('aria-busy', 'true');
+  byId('status').textContent = '뉴스를 수집하고 제목을 분석하고 있습니다... (10~30초 정도 걸립니다)';
+  try {
+    const response = await fetch('/api/analyze', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keyword })
+    });
+    let data;
+    try { data = await response.json(); } catch { throw new Error('서버 응답을 읽지 못했습니다. 잠시 후 다시 시도해 주세요.'); }
+    if (!response.ok || data.ok !== true) throw new Error(data.error?.message || '분석하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    currentResult = data;
+    if (data.articles.length > 0) saveRecentSearch(keyword);
+    renderTitles(data); renderScopeNotice(data);
+    byId('results').hidden = false;
+    byId('reveal-button').hidden = data.articles.length === 0;
+    byId('empty-message').hidden = data.articles.length !== 0;
+    const emptyMessage = data.meta.totalAnalyzedCount > 0 ? '분석할 국내 기사가 없습니다. 다른 키워드로 시도해 주세요.' : '최근 7일간 관련 뉴스를 찾지 못했습니다. 다른 키워드로 시도해 주세요.';
+    byId('empty-message').textContent = emptyMessage;
+    byId('small-sample').hidden = data.articles.length === 0 || data.articles.length >= 10;
+    document.querySelectorAll('[data-copy]').forEach(button => { button.disabled = data.articles.length === 0; });
+    byId('status').textContent = data.message || (data.articles.length ? '분석을 완료했습니다.' : emptyMessage);
+  } catch (error) {
+    currentResult = null;
+    byId('results').hidden = true;
+    byId('status').className = 'error';
+    byId('status').textContent = error instanceof TypeError ? '서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.' : error.message;
+  } finally {
+    isLoading = false;
+    renderRecentSearches();
+    buttons.forEach(button => { button.disabled = false; });
+    byId('keyword').disabled = false;
+    byId('search-form').setAttribute('aria-busy', 'false');
+  }
+}
 byId('reveal-button').addEventListener('click', () => {
+  if (!currentResult || !currentResult.articles.length || isLoading) return;
   const reveal = byId('ai-results').hidden;
-  if (reveal) renderAnalysis(MOCK_RESPONSE);
+  if (reveal) renderAnalysis(currentResult);
   byId('ai-results').hidden = !reveal;
   byId('reveal-button').setAttribute('aria-expanded', String(reveal));
   byId('reveal-button').textContent = reveal ? 'AI 결과 접기' : 'AI 결과 보기';
+});
+byId('keyword').addEventListener('input', () => {
+  if (byId('keyword').value.length >= 100) byId('status').textContent = '키워드는 100자까지 입력할 수 있습니다.';
+});
+byId('keyword').addEventListener('paste', event => {
+  const input = byId('keyword');
+  const pasted = event.clipboardData?.getData('text') || '';
+  const length = input.value.length - (input.selectionEnd - input.selectionStart) + pasted.length;
+  if (length > 100) byId('status').textContent = '키워드는 100자까지 입력할 수 있습니다. 넘는 부분은 입력되지 않습니다.';
 });
